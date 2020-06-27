@@ -1,60 +1,36 @@
-module ca_core(clk, reset_n, sw, ack, debug_leds, load, ca_out);
+module ca_core #
+(
+    parameter ACTIVE_CELL = 128
+)
+(
+  input  wire          clk, 
+  input  wire          reset_n, 
+  output wire [ACTIVE_CELL-1:0]  ca
+);
 
-    parameter N = 514;
+    localparam TOTAL_CELL  = ACTIVE_CELL + 2;
+    localparam INDEX_WIDTH = $clog2(TOTAL_CELL);
 
-    input  wire         clk;
-    input  wire         reset_n;
-    input  wire [3:0]   sw;
-    input  wire         ack;
+    logic [(TOTAL_CELL -1): 0] caState;
 
-    output wire [7:0]   debug_leds;
-    output wire         load;
-    output wire [N-3:0] ca_out;
+    logic [(INDEX_WIDTH-1):0] index;
+    localparam [(INDEX_WIDTH-1):0] const1 = {{(INDEX_WIDTH-1){1'b0}}, 1'b1};
 
-    localparam M = N - 1;
-
-    reg  [9:0] index;
-    wire [9:0] index_next;
-    wire       out;
-    wire       update;
-    wire [2:0] in;
-
-    reg [N-1:0] current_ca;
-    reg [N-1:0] next_ca;
+    wire  [7:0] func;
+    wire  [2:0] in;
 
     always @(posedge clk)
-        if(~reset_n)        index <= 10'd1;
-        else                index <= index_next;
+      if(~reset_n)                 index <= const1;
+      else if (index < TOTAL_CELL) index <= index + const1;
+      else                         index <= const1;
 
     always @(posedge clk)
-        if(~reset_n)    current_ca <= ({{M{1'b0}}, 1'b1} << N / 2);
-        else if(update) current_ca <= next_ca;
+        if(~reset_n)    caState        <= (130'b1 << 65);
+        else            caState[index] <= func[in];
 
-    always @(posedge clk)
-        if(~reset_n)    next_ca <= 0;
-        else            next_ca[index] <= out;
+    assign in = {caState[index + 1], caState[index], caState[index - 1]};
+  
+    assign func = 8'd182;
 
-    ca_controller_fsm #(
-            .N(N - 2)
-        ) inst_ca_controller_fsm (
-            .clk        (clk),
-            .reset_n    (reset_n),
-            .ack        (ack),
-            .index      (index),
-            .index_next (index_next),
-            .update     (update),
-            .load       (load)
-        );
-
-    input_function inst_input_function
-        (
-            .clk        (clk),
-            .reset_n    (reset_n),
-            .sw         (sw),
-            .in         (in),
-            .debug_leds (debug_leds),
-            .out        (out)
-        );
-    assign in = {current_ca[index + 1], current_ca[index], current_ca[index - 1]};
-    assign ca_out = current_ca[N-2:1];
+    assign ca = caState[TOTAL_CELL-2:1];
 endmodule
